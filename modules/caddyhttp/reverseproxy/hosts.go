@@ -92,6 +92,10 @@ type Upstream struct {
 	// HeaderAffinity string
 	// IPAffinity     string
 
+	// If the upstream is inactive, it will not be available for
+	// connections.
+	Inactive bool `json:"inactive"`
+
 	activeHealthCheckPort int
 	healthCheckPolicy     *PassiveHealthChecks
 	cb                    CircuitBreaker
@@ -110,7 +114,7 @@ func (u Upstream) String() string {
 // policies, etc. to determine if a backend
 // should be able to be sent a request.
 func (u *Upstream) Available() bool {
-	return u.Healthy() && !u.Full()
+	return u.Healthy() && !u.Full() && !u.Inactive
 }
 
 // Healthy returns true if the remote host
