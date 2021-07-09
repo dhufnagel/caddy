@@ -382,6 +382,10 @@ type CookieHashSelection struct {
 	Name string `json:"name,omitempty"`
 	// Secret to hash (Hmac256) chosen upstream in cookie
 	Secret string `json:"secret,omitempty"`
+	// The selection policy for establishing the initial connection when no cookie is set
+	InitialConnectionSelectionPolicyRaw string `json:"initial_selection_policy,omitempty"`
+
+	InitialConnectionSelectionPolicy Selector `json:"-"`
 }
 
 // CaddyModule returns the Caddy module information.
@@ -400,12 +404,13 @@ func (s CookieHashSelection) Select(pool UpstreamPool, req *http.Request, w http
 	cookie, err := req.Cookie(s.Name)
 	// If there's no cookie, select new random host
 	if err != nil || cookie == nil {
-		return selectNewHostWithCookieHashSelection(pool, w, s.Secret, s.Name)
+		return s.selectNewHostWithCookieHashSelection(pool, req, w)
 	}
+
 	// If the cookie is present, loop over the available upstreams until we find a match
 	cookieValue := cookie.Value
 	for _, upstream := range pool {
-		if !upstream.Available() {
+		if !upstream.Healthy() {
 			continue
 		}
 		sha, err := hashCookie(s.Secret, upstream.Dial)
@@ -414,7 +419,7 @@ func (s CookieHashSelection) Select(pool UpstreamPool, req *http.Request, w http
 		}
 	}
 	// If there is no matching host, select new random host
-	return selectNewHostWithCookieHashSelection(pool, w, s.Secret, s.Name)
+	return s.selectNewHostWithCookieHashSelection(pool, req, w)
 }
 
 // UnmarshalCaddyfile sets up the module from Caddyfile tokens. Syntax:
@@ -437,15 +442,31 @@ func (s *CookieHashSelection) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 }
 
 // Select a new Host randomly and add a sticky session cookie
-func selectNewHostWithCookieHashSelection(pool []*Upstream, w http.ResponseWriter, cookieSecret string, cookieName string) *Upstream {
-	randomHost := selectRandomHost(pool)
+func (s CookieHashSelection) selectNewHostWithCookieHashSelection(pool []*Upstream, req *http.Request, w http.ResponseWriter) *Upstream {
+
+	// lazy load initial connection selection policy
+	if s.InitialConnectionSelectionPolicy == nil && s.InitialConnectionSelectionPolicyRaw != "" {
+		mod, err := caddy.GetModule("http.reverse_proxy.selection_policies." + s.InitialConnectionSelectionPolicyRaw)
+		if err == nil {
+			s.InitialConnectionSelectionPolicy = mod.New().(Selector)
+		}
+	}
+
+	var randomHost *Upstream
+	if s.InitialConnectionSelectionPolicy == nil {
+		// select a random host if no initial connection selection policy is configured
+		randomHost = selectRandomHost(pool)
+	} else {
+		// use the initial connection selection policy to select a host
+		randomHost = s.InitialConnectionSelectionPolicy.Select(pool, req, w)
+	}
 
 	if randomHost != nil {
 		// Hash (HMAC with some key for privacy) the upstream.Dial string as the cookie value
-		sha, err := hashCookie(cookieSecret, randomHost.Dial)
+		sha, err := hashCookie(s.Secret, randomHost.Dial)
 		if err == nil {
 			// write the cookie.
-			http.SetCookie(w, &http.Cookie{Name: cookieName, Value: sha, Path: "/", Secure: false})
+			http.SetCookie(w, &http.Cookie{Name: s.Name, Value: sha, Path: "/", Secure: false})
 		}
 	}
 	return randomHost
