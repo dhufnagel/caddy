@@ -61,6 +61,10 @@ type Upstream struct {
 	healthCheckPolicy         *PassiveHealthChecks
 	cb                        CircuitBreaker
 	unhealthy                 int32 // accessed atomically; status from active health checker
+
+	// If the upstream is inactive, it will not be available for
+	// connections.
+	RejectsNewConnections bool `json:"rejects_new_connections"`
 }
 
 // (pointer receiver necessary to avoid a race condition, since
@@ -74,7 +78,7 @@ func (u *Upstream) String() string { return u.Dial }
 // policies, etc. to determine if a backend
 // should be able to be sent a request.
 func (u *Upstream) Available() bool {
-	return u.Healthy() && !u.Full()
+	return u.Healthy() && !u.Full() && !u.RejectsNewConnections
 }
 
 // Healthy returns true if the remote host
