@@ -1,6 +1,7 @@
 {
 	servers {
 		listener_wrappers {
+			http_redirect
 			tls
 		}
 		timeouts {
@@ -10,6 +11,7 @@
 			idle 30s
 		}
 		max_header_size 100MB
+		log_credentials
 		protocol {
 			allow_h2c
 			experimental_http3
@@ -32,6 +34,9 @@ foo.com {
 					],
 					"listener_wrappers": [
 						{
+							"wrapper": "http_redirect"
+						},
+						{
 							"wrapper": "tls"
 						}
 					],
@@ -53,6 +58,9 @@ foo.com {
 						}
 					],
 					"strict_sni_host": true,
+					"logs": {
+						"should_log_credentials": true
+					},
 					"experimental_http3": true,
 					"allow_h2c": true
 				}

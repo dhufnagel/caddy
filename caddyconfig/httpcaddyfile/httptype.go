@@ -193,13 +193,7 @@ func (st ServerType) Setup(inputServerBlocks []caddyfile.ServerBlock,
 				return nil, warnings, fmt.Errorf("parsing caddyfile tokens for '%s': %v", dir, err)
 			}
 
-			// As a special case, we want "handle_path" to be sorted
-			// at the same level as "handle", so we force them to use
-			// the same directive name after their parsing is complete.
-			// See https://github.com/caddyserver/caddy/issues/3675#issuecomment-678042377
-			if dir == "handle_path" {
-				dir = "handle"
-			}
+			dir = normalizeDirectiveName(dir)
 
 			for _, result := range results {
 				result.directive = dir
@@ -452,13 +446,14 @@ func (st *ServerType) serversFromPairings(
 		// handle the auto_https global option
 		if autoHTTPS != "on" {
 			srv.AutoHTTPS = new(caddyhttp.AutoHTTPSConfig)
-			if autoHTTPS == "off" {
+			switch autoHTTPS {
+			case "off":
 				srv.AutoHTTPS.Disabled = true
-			}
-			if autoHTTPS == "disable_redirects" {
+			case "disable_redirects":
 				srv.AutoHTTPS.DisableRedir = true
-			}
-			if autoHTTPS == "ignore_loaded_certs" {
+			case "disable_certs":
+				srv.AutoHTTPS.DisableCerts = true
+			case "ignore_loaded_certs":
 				srv.AutoHTTPS.IgnoreLoadedCerts = true
 			}
 		}
@@ -1059,6 +1054,19 @@ func buildSubroute(routes []ConfigValue, groupCounter counter) (*caddyhttp.Subro
 	subroute.Routes = consolidateRoutes(subroute.Routes)
 
 	return subroute, nil
+}
+
+// normalizeDirectiveName ensures directives that should be sorted
+// at the same level are named the same before sorting happens.
+func normalizeDirectiveName(directive string) string {
+	// As a special case, we want "handle_path" to be sorted
+	// at the same level as "handle", so we force them to use
+	// the same directive name after their parsing is complete.
+	// See https://github.com/caddyserver/caddy/issues/3675#issuecomment-678042377
+	if directive == "handle_path" {
+		directive = "handle"
+	}
+	return directive
 }
 
 // consolidateRoutes combines routes with the same properties
