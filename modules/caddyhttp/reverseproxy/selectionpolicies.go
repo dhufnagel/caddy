@@ -382,6 +382,8 @@ type CookieHashSelection struct {
 	Name string `json:"name,omitempty"`
 	// Secret to hash (Hmac256) chosen upstream in cookie
 	Secret string `json:"secret,omitempty"`
+
+	InitialConnectionSelectionUrlPath string `json:"initial_connection_selection_url_path,omitempty"`
 	// The selection policy for establishing the initial connection when no cookie is set
 	InitialConnectionSelectionPolicyRaw string `json:"initial_selection_policy,omitempty"`
 
@@ -401,9 +403,10 @@ func (s CookieHashSelection) Select(pool UpstreamPool, req *http.Request, w http
 	if s.Name == "" {
 		s.Name = "lb"
 	}
+
 	cookie, err := req.Cookie(s.Name)
 	// If there's no cookie, select new random host
-	if err != nil || cookie == nil {
+	if err != nil || cookie == nil || (s.InitialConnectionSelectionUrlPath != "" && s.InitialConnectionSelectionUrlPath == req.URL.Path) {
 		return s.selectNewHostWithCookieHashSelection(pool, req, w)
 	}
 
